@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gemini Automation</title>
+    <title>Gemini Automation Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -48,12 +48,23 @@
         
         #chat-window { flex: 1; overflow-y: auto; display: none; padding: 20px; scrollbar-width: none; }
         .chat-container { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; padding-bottom: 300px; }
-        .row { display: flex; width: 100%; gap: 16px; }
+        .row { display: flex; width: 100%; gap: 16px; position: relative; }
         .user-row { justify-content: flex-end; }
         .user-bubble { background: var(--user-bubble); padding: 12px 20px; border-radius: 22px; max-width: 85%; }
         .ai-content { flex: 1; }
         .ai-code { background: #000; border: 1px solid var(--border); border-radius: 12px; padding: 16px; font-family: monospace; color: #76d9ff; margin: 12px 0; }
         .msg-img { max-width: 350px; border-radius: 12px; margin-top: 10px; border: 1px solid var(--border); }
+        
+        .timestamp { font-size: 10px; opacity: 0.4; margin-top: 4px; display: block; }
+        
+        /* LINK PREVIEW */
+        .link-preview { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; background: #1e1f20; display: flex; gap: 10px; align-items: center; max-width: 400px; text-decoration: none; color: inherit; }
+        .link-preview-icon { background: #444; padding: 8px; border-radius: 8px; }
+
+        /* TYPING INDICATOR */
+        #typing { display: none; align-items: center; gap: 5px; color: var(--subtext); font-size: 13px; margin-left: 40px; }
+        .dot { width: 4px; height: 4px; background: #aaa; border-radius: 50%; animation: blink 1.4s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
 
         /* BOTTOM INPUT */
         .bottom-area { position: absolute; bottom: 0; width: 100%; padding: 20px; background: linear-gradient(transparent, var(--bg) 40%); display: flex; flex-direction: column; align-items: center; }
@@ -69,7 +80,6 @@
         }
         .label { font-size: 11px; color: var(--blue); font-weight: bold; margin: 15px 0 5px; display: block; text-transform: uppercase; }
         .field { width: 100%; background: #131314; border: 1px solid var(--border); color: white; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; outline: none; }
-        .field:focus { border-color: var(--blue); }
         
         .queue-item { 
             background: #2b2c2e; padding: 10px; border-radius: 10px; margin-bottom: 8px; 
@@ -77,7 +87,6 @@
         }
         .queue-header { display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; }
         .del-btn { color: #ff6b6b; cursor: pointer; font-weight: bold; }
-        .trigger-tag { color: var(--blue); font-weight: bold; font-size: 10px; }
     </style>
 </head>
 <body>
@@ -87,7 +96,7 @@
         <svg width="24" height="24" fill="white"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
         <span class="nav-text" style="font-size:18px; margin-left:10px;">Gemini</span>
     </div>
-    <div class="nav-item" onclick="location.reload()">
+    <div class="nav-item" onclick="resetChat()">
         <svg width="20" height="20" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
         <span class="nav-text">New chat</span>
     </div>
@@ -100,32 +109,34 @@
         <div class="welcome-text">Hi <span id="display-name">User</span><br><span>Where should we start?</span></div>
     </div>
 
-    <div id="chat-window"><div class="chat-container" id="chat-wall"></div></div>
+    <div id="chat-window">
+        <div class="chat-container" id="chat-wall"></div>
+        <div id="typing"><div class="dot"></div><div class="dot" style="animation-delay:0.2s"></div><div class="dot" style="animation-delay:0.4s"></div><span style="margin-left:5px;">Gemini is thinking...</span></div>
+    </div>
 
     <div class="bottom-area">
         <div id="tools-modal">
-            <span class="label">Identity Settings</span>
-            <input type="text" class="field" placeholder="Custom Name..." oninput="document.getElementById('display-name').innerText = this.value || 'User'">
+            <span class="label">Identity & Storage</span>
+            <input type="text" id="name-field" class="field" placeholder="Custom Name..." oninput="updateName(this.value)">
             <input type="file" id="pfp-up" class="field" title="Upload User PFP">
+            <button onclick="clearStorage()" style="width:100%; padding:8px; background:#442222; border:none; color:#ffaaaa; border-radius:8px; cursor:pointer; margin-bottom:10px;">Clear All Memory</button>
 
             <span class="label">Response Architect</span>
-            <input type="text" id="trigger-word" class="field" placeholder="Optional Trigger (Keyword/Number)">
+            <input type="text" id="trigger-word" class="field" placeholder="Optional Trigger Keyword">
             <input type="number" id="trigger-count" class="field" placeholder="Trigger Limit (0 = Infinite)" value="1">
-            
             <textarea id="ai-text" class="field" rows="2" placeholder="AI Message Text..."></textarea>
             <textarea id="ai-code" class="field" rows="2" placeholder="AI Code Block..."></textarea>
             <input type="file" id="ai-img" class="field" title="AI Image Attachment">
             
-            <button onclick="addToQueue()" style="width:100%; padding:12px; border:none; border-radius:8px; background:var(--blue); color:black; font-weight:bold; cursor:pointer; margin-top:5px;">Schedule Response</button>
+            <button onclick="addToQueue()" style="width:100%; padding:12px; border:none; border-radius:8px; background:var(--blue); color:black; font-weight:bold; cursor:pointer;">Schedule Response</button>
 
             <span class="label">Upcoming Queue</span>
-            <div id="queue-list"><div style="opacity:0.5; font-size:12px;">No replies scheduled</div></div>
-            
-            <button onclick="toggleTools()" style="width:100%; padding:10px; margin-top:15px; background:transparent; border:1px solid #444; color:white; border-radius:8px; cursor:pointer;">Exit Tools</button>
+            <div id="queue-list"></div>
+            <button onclick="toggleTools()" style="width:100%; padding:10px; margin-top:15px; background:transparent; border:1px solid #444; color:white; border-radius:8px;">Exit Tools</button>
         </div>
 
         <div class="input-pill">
-            <div id="user-img-preview" style="display:none; margin-bottom:10px;"><img id="pre-img" style="height:60px; border-radius:8px; border: 1px solid var(--border);"></div>
+            <div id="user-img-preview" style="display:none; margin-bottom:10px;"><img id="pre-img" style="height:60px; border-radius:8px;"></div>
             <textarea id="main-input" placeholder="Ask Gemini" rows="1" onkeypress="if(event.key==='Enter'){event.preventDefault(); handleSend();}"></textarea>
             <div class="pill-footer">
                 <div style="display:flex; gap:20px;">
@@ -133,31 +144,54 @@
                     <input type="file" id="user-img-up" style="display:none;" accept="image/*">
                     <div onclick="toggleTools()" style="display:flex; align-items:center; gap:8px; cursor:pointer; opacity:0.8;">
                         <svg width="20" height="20" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-4h2v4zm0-6h-2V8h2v2z"/></svg>
-                        <span style="font-size:14px;">Tools & Queue</span>
+                        <span style="font-size:14px;">Tools</span>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:15px;">
-                    <span style="font-size:14px; opacity:0.6;">Fast ▾</span>
                     <svg onclick="handleSend()" width="24" height="24" fill="var(--blue)" style="cursor:pointer;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </div>
             </div>
         </div>
-        <p style="font-size:12px; color:var(--subtext); margin-top:12px;">Gemini is AI and can make mistakes.</p>
     </div>
 </div>
 
 <script>
     const sparkle = `<svg width="24" height="24" style="margin-top:4px; flex-shrink:0;"><path d="M12 22C12 22 12 17.5 15.5 14C19 10.5 23.5 10.5 23.5 10.5C23.5 10.5 19 10.5 15.5 7C12 3.5 12 0 12 0C12 0 12 3.5 8.5 7C5 10.5 0.5 10.5 0.5 10.5C0.5 10.5 5 10.5 8.5 14C12 17.5 12 22 12 22Z" fill="#8ab4f8"/></svg>`;
-    let queue = [];
+    let queue = JSON.parse(localStorage.getItem('gemini_queue')) || [];
+    let chatHistory = JSON.parse(localStorage.getItem('gemini_history')) || [];
     let userImgData = '';
     let tempAiImg = '';
+
+    // Init
+    window.onload = () => {
+        const savedName = localStorage.getItem('gemini_name') || 'User';
+        document.getElementById('display-name').innerText = savedName;
+        document.getElementById('name-field').value = savedName;
+        const savedPfp = localStorage.getItem('gemini_pfp');
+        if(savedPfp) document.getElementById('user-avatar').style.backgroundImage = `url(${savedPfp})`;
+        
+        if(chatHistory.length > 0) {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('chat-window').style.display = 'block';
+            chatHistory.forEach(msg => renderMessage(msg.type, msg.content, msg.time, false));
+        }
+        renderQueue();
+    };
+
+    function updateName(val) {
+        document.getElementById('display-name').innerText = val || 'User';
+        localStorage.setItem('gemini_name', val);
+    }
 
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
     function toggleTools() { const m = document.getElementById('tools-modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
 
     // File Handling
     document.getElementById('pfp-up').onchange = (e) => {
-        const r = new FileReader(); r.onload = (f) => document.getElementById('user-avatar').style.backgroundImage = `url(${f.target.result})`;
+        const r = new FileReader(); r.onload = (f) => {
+            document.getElementById('user-avatar').style.backgroundImage = `url(${f.target.result})`;
+            localStorage.setItem('gemini_pfp', f.target.result);
+        };
         r.readAsDataURL(e.target.files[0]);
     };
     document.getElementById('ai-img').onchange = (e) => {
@@ -178,17 +212,11 @@
         const count = parseInt(document.getElementById('trigger-count').value) || 0;
         const txt = document.getElementById('ai-text').value;
         const code = document.getElementById('ai-code').value;
-        
         if(!txt && !code && !tempAiImg) return;
-
         queue.push({ trigger, count, txt, code, img: tempAiImg });
-        
-        // Reset Builder
-        document.getElementById('ai-text').value = '';
-        document.getElementById('ai-code').value = '';
-        document.getElementById('trigger-word').value = '';
-        tempAiImg = '';
-        renderQueue();
+        localStorage.setItem('gemini_queue', JSON.stringify(queue));
+        document.getElementById('ai-text').value = ''; document.getElementById('ai-code').value = '';
+        tempAiImg = ''; renderQueue();
     }
 
     function renderQueue() {
@@ -197,71 +225,93 @@
         l.innerHTML = queue.map((it, i) => `
             <div class="queue-item">
                 <div class="queue-header">
-                    <span class="trigger-tag">${it.trigger ? 'TRIGGER: '+it.trigger : 'SEQUENTIAL'}</span>
-                    <span class="del-btn" onclick="queue.splice(${i},1);renderQueue();">×</span>
+                    <span style="color:var(--blue); font-weight:bold;">${it.trigger ? 'TRIGGER: '+it.trigger : 'SEQUENTIAL'}</span>
+                    <span class="del-btn" onclick="removeQueue(${i})">×</span>
                 </div>
-                <div style="opacity:0.8">${it.txt ? it.txt.substring(0,30)+'...' : (it.code ? 'Code Block' : 'Image only')}</div>
-                <div style="font-size:10px; opacity:0.5;">Limit: ${it.count === 0 ? '∞' : it.count}</div>
+                <div style="opacity:0.8">${it.txt ? it.txt.substring(0,30)+'...' : 'Attachment'}</div>
             </div>
         `).join('');
     }
 
+    function removeQueue(i) { queue.splice(i,1); localStorage.setItem('gemini_queue', JSON.stringify(queue)); renderQueue(); }
+
     function handleSend() {
         const input = document.getElementById('main-input');
-        const wall = document.getElementById('chat-wall');
         const val = input.value.trim();
         if (!val && !userImgData) return;
 
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const userMsg = { type: 'user', content: { text: val, img: userImgData }, time };
+        chatHistory.push(userMsg);
+        localStorage.setItem('gemini_history', JSON.stringify(chatHistory));
+
         document.getElementById('home-screen').style.display = 'none';
         document.getElementById('chat-window').style.display = 'block';
+        renderMessage('user', userMsg.content, time);
 
-        let userHtml = `<div class="row user-row"><div class="user-bubble">`;
-        if (userImgData) userHtml += `<img src="${userImgData}" class="msg-img"><br>`;
-        if (val) userHtml += val;
-        userHtml += `</div></div>`;
-        wall.innerHTML += userHtml;
-
-        const currentVal = val;
-        input.value = '';
-        userImgData = '';
+        input.value = ''; userImgData = '';
         document.getElementById('user-img-preview').style.display = 'none';
+        
+        // AI Logic
+        document.getElementById('typing').style.display = 'flex';
         scroll();
 
         setTimeout(() => {
+            document.getElementById('typing').style.display = 'none';
             let reply = null;
-            // 1. Check for Trigger matches first
-            const triggerIdx = queue.findIndex(q => q.trigger && currentVal.toLowerCase().includes(q.trigger.toLowerCase()));
+            const triggerIdx = queue.findIndex(q => q.trigger && val.toLowerCase().includes(q.trigger.toLowerCase()));
             
             if (triggerIdx !== -1) {
                 reply = queue[triggerIdx];
-                if (reply.count > 0) {
-                    reply.count--;
-                    if (reply.count === 0) queue.splice(triggerIdx, 1);
-                }
-            } 
-            // 2. If no trigger matches, take the first item that has NO trigger (Sequential)
-            else {
+                if (reply.count > 0) { reply.count--; if (reply.count === 0) queue.splice(triggerIdx, 1); }
+            } else {
                 const seqIdx = queue.findIndex(q => !q.trigger);
-                if (seqIdx !== -1) {
-                    reply = queue.splice(seqIdx, 1)[0];
-                }
+                if (seqIdx !== -1) reply = queue.splice(seqIdx, 1)[0];
             }
 
-            let aiHtml = `<div class="row">${sparkle}<div class="ai-content">`;
-            if (reply) {
-                if (reply.txt) aiHtml += `<div>${reply.txt.replace(/\n/g, '<br>')}</div>`;
-                if (reply.code) aiHtml += `<div class="ai-code">${reply.code}</div>`;
-                if (reply.img) aiHtml += `<img src="${reply.img}" class="msg-img">`;
-                renderQueue();
-            } else {
-                aiHtml += `<div>How can I help you today?</div>`;
-            }
-            aiHtml += `</div></div>`;
-            wall.innerHTML += aiHtml;
+            const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const aiMsg = { type: 'ai', content: reply || { txt: "I'm listening. Setup a response in Tools!" }, time: aiTime };
+            chatHistory.push(aiMsg);
+            localStorage.setItem('gemini_history', JSON.stringify(chatHistory));
+            localStorage.setItem('gemini_queue', JSON.stringify(queue));
+            
+            renderMessage('ai', aiMsg.content, aiTime);
+            renderQueue();
             scroll();
-        }, 800);
+        }, 1500);
     }
 
+    function renderMessage(type, content, time, animate = true) {
+        const wall = document.getElementById('chat-wall');
+        let html = '';
+        if (type === 'user') {
+            html = `<div class="row user-row"><div class="user-bubble">`;
+            if (content.img) html += `<img src="${content.img}" class="msg-img"><br>`;
+            if (content.text) html += linkify(content.text);
+            html += `<span class="timestamp">${time}</span></div></div>`;
+        } else {
+            html = `<div class="row">${sparkle}<div class="ai-content">`;
+            if (content.txt) html += `<div>${linkify(content.txt)}</div>`;
+            if (content.code) html += `<div class="ai-code">${content.code}</div>`;
+            if (content.img) html += `<img src="${content.img}" class="msg-img">`;
+            html += `<span class="timestamp">${time}</span></div></div>`;
+        }
+        wall.innerHTML += html;
+    }
+
+    function linkify(text) {
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return text.replace(urlRegex, (url) => {
+            return `<a href="${url}" target="_blank" style="color:var(--blue);">${url}</a>
+                    <a href="${url}" target="_blank" class="link-preview">
+                        <div class="link-preview-icon">🔗</div>
+                        <div><div style="font-weight:bold; font-size:12px;">Link Preview</div><div style="font-size:10px; opacity:0.6;">${url.substring(0,40)}...</div></div>
+                    </a>`;
+        });
+    }
+
+    function resetChat() { chatHistory = []; localStorage.removeItem('gemini_history'); location.reload(); }
+    function clearStorage() { localStorage.clear(); location.reload(); }
     function scroll() { const w = document.getElementById('chat-window'); w.scrollTo({ top: w.scrollHeight, behavior: 'smooth' }); }
 </script>
 </body>
